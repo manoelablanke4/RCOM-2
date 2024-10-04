@@ -19,7 +19,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 1
+#define BUF_SIZE 5
 
 #define START 0 
 #define FLAG_RCV 1 
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
     while (STOP == FALSE)
 {
     // Retorna após 1 caracteres terem sido recebidos
-    int bytes = read(fd, buf, BUF_SIZE);
+    int bytes = read(fd, buf, 1);
 	switch (ACTUAL){
 		case START:
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
@@ -137,6 +137,15 @@ int main(int argc, char *argv[])
 		}
 		if(STOP==TRUE){
 			printf("Congrats!\n");
+        
+            buf[0] = F;
+            buf[1] = A;
+            C = 0x07;
+            buf[2] = C;
+            buf[3] = A^C;
+            buf[4] = F;
+
+            int bytes = write(fd, buf, BUF_SIZE);
 		}
 }   
 

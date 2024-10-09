@@ -21,7 +21,7 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
-int main()
+/*int main()
 {
     // Set alarm function handler
     (void)signal(SIGALRM, alarmHandler);
@@ -39,3 +39,4 @@ int main()
 
     return 0;
 }
+*/

@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
+#include "alarm.c"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -20,6 +22,11 @@
 #define TRUE 1
 
 #define BUF_SIZE 5
+#define SEND_TIMES 3
+
+extern int alarmCount;
+extern int alarmEnabled;
+int send_times = 0;
 
 volatile int STOP = FALSE;
 
@@ -37,6 +44,8 @@ int main(int argc, char *argv[])
                argv[0]);
         exit(1);
     }
+
+    (void)signal(SIGALRM, alarmHandler);
 
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
@@ -68,7 +77,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -94,43 +103,47 @@ int main(int argc, char *argv[])
     
     
     unsigned char A, C, F;
-    A = 0x03; C= 0x03; F= 0x7E;
+    A = 0x03; C= 0x25; F= 0x7E;
     buf[0] = F;
     buf[1] = A;
     buf[2] = C;
     buf[3] = A^C;
     buf[4] = F;
 
+
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
 
     int bytes = write(fd, buf, BUF_SIZE);
-    
+    send_times++;
+    alarm(3);
+
     printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
-    
-while (STOP == FALSE)
+
+while (STOP == FALSE && alarmCount < 3)
 {
+    
     // Retorna após 5 caracteres terem sido recebidos
     int bytes = read(fd, buf, BUF_SIZE);
-
     // Itera sobre os bytes lidos e imprime cada um como unsigned char
-    printf("Buffer values (%d bytes received):\n", bytes);
-    
-    for (int i = 0; i < bytes; i++) {
-        // Imprime o valor em hexadecimal e decimal
-        printf("0x%02X\n", buf[i]);
-    }
     if(buf[0] == 0x7E && buf[1] == 0x03 && buf[2] == 0x07 && buf[3] != 0x00 && buf[4] == 0x7E) {
         printf("Received message is correct\n");
-    } else {
-        printf("Received message is incorrect\n");
+        STOP = TRUE;
+    } else if(alarmCount > 0 && alarmCount == send_times){
+        buf[0] = F;
+        buf[1] = A;
+        buf[2] = C;
+        buf[3] = A^C;
+        buf[4] = F;
+        int bytes = write(fd, buf, BUF_SIZE);
+        printf("%d bytes written\n", bytes);
+        send_times++;
+        alarm(3);
     }
-
-            STOP = TRUE;
 }   
 
     // Restore the old port settings

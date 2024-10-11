@@ -111,26 +111,36 @@ int main(int argc, char *argv[])
     int bytes = read(fd, buf, 1);
 	switch (ACTUAL){
 		case START:
+            printf("i recieved this", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
+            printf("im here ",ACTUAL);
 			break;
 		case FLAG_RCV:
+            printf("i recieved this", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == A) ACTUAL = A_RCV;
 			else ACTUAL = START;
+            printf("im here ",ACTUAL);
 			break;
 		case A_RCV:
+            printf("i recieved this", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == C) ACTUAL = C_RCV;
 			else ACTUAL = START;
+            printf("im here ",ACTUAL);
 			break;
 		case C_RCV:
+        printf("i recieved this", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == 0x00) ACTUAL = BCC_OK;
 			else ACTUAL = START;
+            printf("im here ",ACTUAL);
 			break;
 		case BCC_OK:
+        printf("i recieved this", buf[0]);
 			if(buf[0] == F) STOP=TRUE;
 			else ACTUAL = START;
+            printf("im here ",ACTUAL);
 			break;
 		default:
 			break;

@@ -111,36 +111,35 @@ int main(int argc, char *argv[])
     int bytes = read(fd, buf, 1);
 	switch (ACTUAL){
 		case START:
-            printf("i recieved this", buf[0]);
+            printf("i recieved this %u and im at START\n", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
-            printf("im here ",ACTUAL);
+            
 			break;
 		case FLAG_RCV:
-            printf("i recieved this", buf[0]);
+            printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == A) ACTUAL = A_RCV;
 			else ACTUAL = START;
-            printf("im here ",ACTUAL);
+            
 			break;
 		case A_RCV:
-            printf("i recieved this", buf[0]);
+            printf("i recieved this %u and im at A_RCV\n", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == C) ACTUAL = C_RCV;
 			else ACTUAL = START;
-            printf("im here ",ACTUAL);
+            
 			break;
 		case C_RCV:
-        printf("i recieved this", buf[0]);
+        printf("i recieved this %u and im at C_RCV\n", buf[0]);
 			if(buf[0] == F) ACTUAL = FLAG_RCV;
 			else if(buf[0] == 0x00) ACTUAL = BCC_OK;
 			else ACTUAL = START;
-            printf("im here ",ACTUAL);
+           
 			break;
 		case BCC_OK:
-        printf("i recieved this", buf[0]);
+        printf("i recieved this %u and im at BCC_OK\n", buf[0]);
 			if(buf[0] == F) STOP=TRUE;
 			else ACTUAL = START;
-            printf("im here ",ACTUAL);
 			break;
 		default:
 			break;

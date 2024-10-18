@@ -2,6 +2,8 @@
 
 #include "link_layer.h"
 #include "serial_port.h"
+#include <unistd.h>
+#include <stdio.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -25,11 +27,8 @@ int llopen(LinkLayer connectionParameters)
 {
     int fd =openSerialPort(connectionParameters.serialPort,
                        connectionParameters.baudRate);
-    if (openSerialPort(connectionParameters.serialPort,
-                       connectionParameters.baudRate) < 0)
-    {
-        return -1;
-    }
+    if (fd < 0) return 1;
+    
     unsigned char buf[BUF_SIZE] = {0};
     unsigned char A, C, F;
     A = 0x03; C= 0x03; F= 0x7E;
@@ -52,11 +51,9 @@ int llopen(LinkLayer connectionParameters)
         // Test this condition by placing a '\n' in the middle of the buffer.
         // The whole buffer must be sent even with the '\n'.
 
-        int bytes = write(fd, buf, BUF_SIZE);
+        writeBytesSerialPort(buf, BUF_SIZE);
         send_times++;
         alarm(3);
-
-        printf("%d bytes written\n", bytes);
 
         // Wait until all bytes have been written to the serial port
         sleep(1);
@@ -65,7 +62,7 @@ int llopen(LinkLayer connectionParameters)
         {
             
             // Retorna após 5 caracteres terem sido recebidos
-            int bytes = read(fd, buf, BUF_SIZE);
+            readByteSerialPort(buf);
             // Itera sobre os bytes lidos e imprime cada um como unsigned char
             if(buf[0] == 0x7E && buf[1] == 0x03 && buf[2] == 0x07 && buf[3] != 0x00 && buf[4] == 0x7E) {
                 alarm(0);
@@ -77,8 +74,7 @@ int llopen(LinkLayer connectionParameters)
                 buf[2] = C;
                 buf[3] = A^C;
                 buf[4] = F;
-                int bytes = write(fd, buf, BUF_SIZE);
-                printf("%d bytes written\n", bytes);
+                writeBytesSerialPort(buf, BUF_SIZE);
                 send_times++;
                 alarm(3);
             }
@@ -92,7 +88,7 @@ int llopen(LinkLayer connectionParameters)
         while (STOP == FALSE)
     {
         // Retorna após 1 caracteres terem sido recebidos
-        int bytes = read(fd, buf, 1);
+        readByteSerialPort(buf);
         switch (ACTUAL){
             case START:
                 printf("i recieved this %u and im at START\n", buf[0]);
@@ -138,7 +134,7 @@ int llopen(LinkLayer connectionParameters)
                 buf[3] = A^C;
                 buf[4] = F;
 
-                int bytes = write(fd, buf, BUF_SIZE);
+                writeBytesSerialPort(buf, BUF_SIZE);
             }
     }   
 
@@ -146,6 +142,8 @@ int llopen(LinkLayer connectionParameters)
     default:
         break;
     }
+
+    closeSerialPort();
     return 1;
 }
 

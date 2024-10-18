@@ -38,5 +38,4 @@ void alarmHandler(int signal)
     printf("Ending program\n");
 
     return 0;
-}
-*/
+}*/

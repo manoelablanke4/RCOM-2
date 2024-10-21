@@ -13,14 +13,14 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 
 // Alarm function handler
-void alarmHandler(int signal)
+/*void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
 
     printf("Alarm #%d\n", alarmCount);
 }
-
+*/
 /*int main()
 {
     // Set alarm function handler

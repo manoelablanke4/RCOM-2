@@ -11,7 +11,6 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
-#include "alarm.c"
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -29,6 +28,13 @@ extern int alarmEnabled;
 int send_times = 0;
 
 volatile int STOP = FALSE;
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+
+    printf("Alarm #%d\n", alarmCount);
+}
 
 int main(int argc, char *argv[])
 {

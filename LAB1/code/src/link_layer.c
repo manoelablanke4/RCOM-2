@@ -174,7 +174,6 @@ int llopen(LinkLayer connectionParameters)
                 printf("Congrats!\n");
             }
     }   
-
         break;
     default:
         break;

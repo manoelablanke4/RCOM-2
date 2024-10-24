@@ -23,5 +23,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     port.nRetransmissions = nTries;
     port.timeout = timeout;
 
-    llopen(port);
+     if(llopen(port) < 0){
+        printf("Error opening connection\n");
+        return; 
+     }
+
 }

@@ -2,9 +2,11 @@
 
 #include "link_layer.h"
 #include "serial_port.h"
+#include "auxiliar.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>
+#include <stdbool.h>
 
 
 // MISC
@@ -15,7 +17,7 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 int send_times = 0;
 volatile int STOP = FALSE;
-
+LinkLayer ll;
 
 #define START 0 
 #define FLAG_RCV 1 
@@ -189,9 +191,39 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    // TODO
+    unsigned char stuffedFrame[256];
+    size_t stuffedLength;
 
-    return 0;
+    byteStuffing(buf, bufSize, stuffedFrame, &stuffedLength);
+    stuffedFrame[0] = FLAG;
+    stuffedFrame[1] = 0x03; //always 0x03
+    stuffedFrame[2] = 0x00; //how am i suppose to know if its 0x00 or 0x80
+    stuffedFrame[3] = calculateBCC1(stuffedFrame[1], stuffedFrame[2]);
+
+    
+    for(int i = 0; i < bufSize; i++){
+        stuffedFrame[i+4] = buf[i];
+    }
+
+    stuffedFrame[bufSize+4] = calculateBCC2(buf, bufSize);
+    stuffedFrame[bufSize+5] = FLAG;
+    size_t newSize = bufSize + 6;
+
+
+
+    bool sent = false;
+    send_times = 0;
+
+    while(!sent && send_times < SEND_TIMES){
+        if(writeBytesSerialPort(stuffedFrame, stuffedLength) == stuffedLength){
+            sent = true;
+        }
+        
+    }
+
+
+
+    return stuffedLength;
 }
 
 ////////////////////////////////////////////////

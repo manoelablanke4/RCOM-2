@@ -23,7 +23,7 @@ LinkLayer ll;
 #define NS_0 0x00
 #define NS_1 0x80
 
-extern unsigned char control = 0x00;
+unsigned char control = 0x00;
 #define START 0 
 #define FLAG_RCV 1 
 #define A_RCV 2 
@@ -294,15 +294,11 @@ int llwrite(const unsigned char *buf, int bufSize)
             printf("Received message is correct\n");
         } else if(alarmCount > 0 && alarmCount == send_times){
             printf("Resending message\n");
-            //PREPARE FRAME
-            writeBytesSerialPort(transformedFrame, transformedLength);
+            writeBytesSerialPort(transformedFrame, transformedLength); //We already have the frame? Just ship it
             send_times++;
             alarm(3);
         }
     }
-
-
-
     return stuffedLength;
 }
 

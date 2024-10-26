@@ -13,6 +13,4 @@ unsigned char calculateBCC1(unsigned char a, unsigned char b);
 
 unsigned char calculateBCC2(const unsigned char *buf, int bufSize);
 
-
-
 #endif

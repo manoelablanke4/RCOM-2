@@ -9,7 +9,6 @@
 #define NS_0 0x00
 #define NS_1 0x80
 
-unsigned char control = NS_0;
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)

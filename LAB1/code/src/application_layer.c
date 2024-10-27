@@ -2,6 +2,7 @@
 
 #include "application_layer.h"
 #include "link_layer.h"
+#include "auxiliar.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -28,9 +29,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     port.timeout = timeout;
 
      if(llopen(port) < 0){
-        printf("Error opening connection\n");
-        return; 
+       printf("Error opening connection\n");
      }
+     printf("\n---------------llopen done---------------\n\n");
+      if(port_role == LlTx){
+        printf("Transmitter\n");
+        SendFile(filename);
 
+      } 
 
 }

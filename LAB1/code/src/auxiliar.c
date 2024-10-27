@@ -4,9 +4,10 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
 
 
-
+//STUFFING AND DESTUFFING
 void byteStuffing(const unsigned char *input, size_t inputLength, unsigned char *output, size_t *outputLength){
     size_t newLength = 0;
 
@@ -60,6 +61,9 @@ void byteDestuffing(const unsigned char *input, size_t inputLength, unsigned cha
     *outputLength = newLength;
 }
 
+
+
+//BCC CALCULATION
 unsigned char calculateBCC1(unsigned char a, unsigned char b) {
     return a ^ b;
 }
@@ -72,26 +76,108 @@ unsigned char calculateBCC2(const unsigned char *buf, int bufSize){
     return bcc;
 }
 
-int sendFile(const char *filename)
-{
-FILE *file = fopen(filename, "r");
-    if (file == NULL)
-    {
+
+//FILE FUNCTIONS
+
+int createControlPacket(unsigned char controlByte, unsigned char *packet, int fileSize, const char *filename){
+    int index = 0;
+    packet[index++] = controlByte;
+    packet[index++] = TYPE_FILE;
+    packet[index++] = 4;
+    packet[index++] = (fileSize>>24)& 0xFF;
+    packet[index++] = (fileSize>>16)& 0xFF;
+    packet[index++] = (fileSize>>8)& 0xFF;
+    packet[index++] = (fileSize)& 0xFF;
+    packet[index++]= TYPE_FILENAME;
+    packet[index++] = strlen(filename)+1;
+    for(int i = 0; i < strlen(filename); i++){
+        packet[index++] = filename[i];
+    }
+    packet[index++] = 0;
+    return index;
+}
+
+int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *data, int dataSize){
+    int index = 0;
+    packet[index++] = CONTROL_START;
+    packet[index++] = (unsigned char )sequenceNumber;
+
+    unsigned char L1 = dataSize & 0xFF; 
+    unsigned char L2 = (dataSize >> 8) & 0xFF; 
+    packet[index++] = L2;
+    packet[index++] = L1;
+   
+    for(int i = 0; i < dataSize; i++){
+        packet[index++] = data[i];
+    }
+    return index;
+}
+
+
+int SendFile(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
         printf("Error opening file\n");
         return -1;
     }
 
-
-    unsigned char buf[MAX_PAYLOAD_SIZE];
     int fileSize = getFileSize(file);
+    unsigned char controlPacket[MAX_PAYLOAD_SIZE];
+    int controlPacketSize = createControlPacket(CONTROL_START, controlPacket, fileSize, filename);
 
-    while (fileSize > 0)
-    {
-        int bytesRead = fread(buf, 1, MAX_PAYLOAD_SIZE, file);
-        llwrite(buf, bytesRead);
-        fileSize -= bytesRead;
+    if (controlPacketSize < 0) {
+        printf("Error building control packet\n");
+        fclose(file);
+        return -1;
     }
-    return 0;}
+
+    if (llwrite(controlPacket, controlPacketSize) < 0) {
+        printf("Error sending control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    printf("Control packet sent to start\n");
+
+    unsigned char dataPacket[MAX_PAYLOAD_SIZE];
+    int bytesRead;
+    int sequenceNumber = 0;
+
+    while ((bytesRead = fread(dataPacket, 1, MAX_PAYLOAD_SIZE - 4, file)) > 0) {
+        int packetSize = createDataPacket(dataPacket, sequenceNumber, dataPacket + 4, bytesRead);
+        sequenceNumber = (sequenceNumber + 1) % 100;
+
+        if (packetSize < 0) {
+            printf("Error building data packet\n");
+            fclose(file);
+            return -1;
+        }
+
+        if (llwrite(dataPacket, packetSize) < 0) {
+            printf("Error sending data packet\n");
+            fclose(file);
+            return -1;
+        }
+    }
+
+    // Send end control packet
+    controlPacketSize = createControlPacket(CONTROL_END, controlPacket, fileSize, filename);
+    if (controlPacketSize < 0) {
+        printf("Error building end control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    if (llwrite(controlPacket, controlPacketSize) < 0) {
+        printf("Error sending end control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    printf("File transfer complete.\n");
+    fclose(file);
+    return 0;
+}
 
     int getFileSize(FILE *fp){
 
@@ -103,3 +189,4 @@ FILE *file = fopen(filename, "r");
 
     return lsize;
 }
+

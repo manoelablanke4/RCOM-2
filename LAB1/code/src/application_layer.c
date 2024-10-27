@@ -35,7 +35,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
       if(port_role == LlTx){
         printf("Transmitter\n");
         SendFile(filename);
-
       } 
 
 }

@@ -16,6 +16,7 @@
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 int send_times = 0;
+int data_length;
 unsigned char ACTUAL;
 unsigned char T_STATE;
 unsigned char R_STATE;
@@ -55,7 +56,7 @@ int llopen(LinkLayer connectionParameters)
 
 
     unsigned char buf[BUF_SIZE] = {0};
-    unsigned char buf2[BUF_SIZE] = {0};
+
     unsigned char A, C, F;
     A = 0x03; C= 0x03; F= 0x7E;
 
@@ -197,7 +198,6 @@ int llopen(LinkLayer connectionParameters)
         break;
     }
 
-    closeSerialPort();
     return 1;
 }
 
@@ -205,11 +205,13 @@ int llopen(LinkLayer connectionParameters)
 // LLWRITE
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
-{ 
+{
+
     unsigned char bcc2 = calculateBCC2(buf, bufSize);
     alarmCount = 0; send_times = 0;
     unsigned char stuffedFrame[256];
     size_t stuffedLength;
+    data_length = bufSize;
     unsigned char response[256];
 
     byteStuffing(buf, bufSize, stuffedFrame, &stuffedLength);
@@ -233,14 +235,14 @@ int llwrite(const unsigned char *buf, int bufSize)
     if(writeBytesSerialPort(transformedFrame, transformedLength) == transformedLength){send_times++;}
     else { printf ("Error writing to serial port\n"); };
 
-    send_times++;
     alarm(ll.timeout);
     T_STATE=START;
 
     unsigned char C;
 
     while(STOP == FALSE && alarmCount < ll.nRetransmissions){   
-        readByteSerialPort(response);
+        if(readByteSerialPort(response) >  0)
+        {
         switch (T_STATE){
         case START:
             printf("i recieved this %u and im at START\n", response[0]);
@@ -295,6 +297,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         default:
             break;
         }
+    }
         if(STOP==TRUE) {
             alarm(0);
             printf("Received message is correct\n");
@@ -305,6 +308,8 @@ int llwrite(const unsigned char *buf, int bufSize)
             alarm(ll.timeout);
         }
     }
+    if(STOP == FALSE) return -1;
+
     return transformedLength;
 }
 
@@ -314,46 +319,64 @@ int llwrite(const unsigned char *buf, int bufSize)
 int llread(unsigned char *packet)
 {
     unsigned char buf[256];
-    unsigned char frame[256];
+    unsigned char data[256];
+    unsigned char A=0, C=0;
     unsigned int pos;
     unsigned char num_frame;
     size_t frameLength;
-    unsigned char destuffedFrame[256];
+    unsigned char data_destuffed[256];
+    size_t data_destuffed_length;
     R_STATE = START;
+    bool error = false;
 
     while (STOP == FALSE)
     {
         // Retorna após 1 caracteres terem sido recebidos
-        if(readByteSerialPort(buf) != 0)
+        if(readByteSerialPort(buf) > 0)
         {
             frameLength++;
             switch (R_STATE){
             case START:
                 printf("i recieved this %u and im at START\n", buf[0]);
-                if(buf[0] == FLAG) {R_STATE = FLAG_RCV; frame[pos++] = buf[0];}
+                if(buf[0] == FLAG) {R_STATE = FLAG_RCV; frameLength++;}
                 break;
             case FLAG_RCV:
                 printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
                 if(buf[0] == FLAG) R_STATE = FLAG_RCV;
-                else if(buf[0] == 0x03) {R_STATE = A_RCV; frame[pos++] = buf[0];}
+                else if(buf[0] == 0x03) {R_STATE = A_RCV; C = buf[0]; frameLength++;}
                 else R_STATE = START;
                 break;
             case A_RCV:
                 printf("i recieved this %u and im at A_RCV\n", buf[0]);
                 if(buf[0] == FLAG) R_STATE = FLAG_RCV;
-                else if(buf[0] == 0x00) {R_STATE = C_RCV; frame[pos++] = buf[0]; num_frame = 0;} 
-                else if(buf[0] == 0x80) {R_STATE = C_RCV; frame[pos++] = buf[0]; num_frame = 1;}
+                else if(buf[0] == 0x00) {R_STATE = C_RCV; num_frame = 0; C = buf[0]; frameLength++;} 
+                else if(buf[0] == 0x80) {R_STATE = C_RCV; num_frame = 1; C = buf[0]; frameLength++;}
                 else R_STATE = START;
                 break;
             case C_RCV:
                 printf("i recieved this %u and im at C_RCV\n", buf[0]);
                 if(buf[0] == FLAG) R_STATE = FLAG_RCV;
-                else if(buf[0] == calculateBCC1(frame[pos-1], frame[pos-2])) R_STATE = BCC1_OK;
+                else if(buf[0] == calculateBCC1(A, C)) {R_STATE = BCC1_OK; frameLength++;}
                 else {R_STATE = START; printf("BCC1 error\n");}
                 break;
-            case BCC1_OK:
-            printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
-                if(buf[0] == FLAG) STOP=TRUE;
+            case BCC1_OK:   
+                printf("Receiving Data\n");
+                if(pos < data_length) data[pos++] = buf[0];
+                else {
+                    if(buf[0] != FLAG) {
+                        byteDestuffing(data, data_length, data_destuffed, &data_destuffed_length);
+                        if(buf[0] == calculateBCC2(data_destuffed, data_destuffed_length)) {
+                            R_STATE = BCC2_OK; frameLength++;
+                        }
+                        else {R_STATE = BCC2_OK; error = true; frameLength++;}
+                    }
+                    else if(buf[0] == FLAG) R_STATE = FLAG_RCV;
+                    else {R_STATE = START; printf("BCC2 error\n");}
+                }
+                break;
+            case BCC2_OK:
+                printf("i recieved this %u and im at BCC2_OK\n", buf[0]);
+                if(buf[0] == FLAG) {STOP=TRUE; frameLength ++;}
                 else R_STATE = START;
                 break;
             default:
@@ -361,14 +384,28 @@ int llread(unsigned char *packet)
             }
         }
             if(STOP==TRUE){
-
-                // Look if there is something to put before
+                unsigned char frame[256];
+                frame[0] = FLAG;
+                frame[1] = 0x03;
+                switch (num_frame)
+                {
+                case 0:
+                    if(!error) frame[2] = 0xAA;
+                    else frame[2] = 0x54;
+                    break;
+                case 1:
+                    if(!error) frame[2] = 0xAB;
+                    else frame[2] = 0x55;
+                    break;
+                default:
+                    break;
+                }
+                frame[3] = calculateBCC1(frame[1], frame[2]);
+                frame[4] = FLAG;
                 writeBytesSerialPort(frame, frameLength);
                 printf("Receiver sending response");
             }
-    } 
-    
-
+    }
     return frameLength;
 }
 

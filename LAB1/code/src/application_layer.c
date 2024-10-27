@@ -36,5 +36,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("Transmitter\n");
         SendFile(filename);
       } 
-
+      else{
+        printf("Receiver\n");
+        ReceiveFile(filename);
+      }
 }

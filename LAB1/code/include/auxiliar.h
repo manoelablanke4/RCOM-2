@@ -20,6 +20,9 @@ unsigned char calculateBCC1(unsigned char a, unsigned char b);
 unsigned char calculateBCC2(const unsigned char *buf, int bufSize);
 
 int SendFile(const char *file);
+
+int ReceiveFile(const char *file);
+
 int getFileSize(FILE *file);
 int createControlPacket(unsigned char controlByte, unsigned char *packet, int fileSize, const char *filename);
 

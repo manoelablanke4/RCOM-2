@@ -112,7 +112,16 @@ int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *d
     }
     return index;
 }
+   int getFileSize(FILE *fp){
 
+    int lsize;
+    
+    fseek(fp, 0, SEEK_END);
+    lsize = (int)ftell(fp);
+    rewind(fp);
+
+    return lsize;
+}
 
 int SendFile(const char *filename) {
     FILE *file = fopen(filename, "r");
@@ -179,14 +188,81 @@ int SendFile(const char *filename) {
     return 0;
 }
 
-    int getFileSize(FILE *fp){
+ int ReceiveFile(const char *filename) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        printf("Error opening file\n");
+        return -1;
+    }
 
-    int lsize;
+    unsigned char controlPacket[MAX_PAYLOAD_SIZE];
+    int bytesRead = llread(controlPacket);
+    if (bytesRead < 0) {
+        printf("Error receiving control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    if (controlPacket[0] != CONTROL_START) {
+        printf("Expected start control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    int fileSize = (controlPacket[3] << 24) | (controlPacket[4] << 16) | (controlPacket[5] << 8) | controlPacket[6];
+    int filenameLength = controlPacket[8];
+    char receivedFilename[256];
+    strncpy(receivedFilename, (char *)controlPacket + 9, filenameLength);
+    receivedFilename[filenameLength] = '\0';
+
+    if (strcmp(filename, receivedFilename) != 0) {
+        printf("Filename mismatch\n");
+        fclose(file);
+        return -1;
+    }
+
+    unsigned char dataPacket[MAX_PAYLOAD_SIZE];
+    int sequenceNumber = 0;
     
-    fseek(fp, 0, SEEK_END);
-    lsize = (int)ftell(fp);
-    rewind(fp);
 
-    return lsize;
-}
+    while (1) {
+        bytesRead = llread(dataPacket);
+        if (bytesRead < 0) {
+            printf("Error receiving data packet\n");
+            fclose(file);
+            return -1;
+        }
 
+        if (dataPacket[1] != sequenceNumber) {
+            printf("Expected sequence number %d, received %d\n", sequenceNumber, dataPacket[1]);
+            fclose(file);
+            return -1;
+        }
+
+        int dataSize = (dataPacket[3] << 8) | dataPacket[2];
+        fwrite(dataPacket + 4, 1, dataSize, file);
+
+        if (dataSize < MAX_PAYLOAD_SIZE - 4) {
+            break;
+        }
+
+        sequenceNumber = (sequenceNumber + 1) % 100;
+    }
+
+    bytesRead = llread(controlPacket);
+    if (bytesRead < 0) {
+        printf("Error receiving end control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    if (controlPacket[0] != CONTROL_END) {
+        printf("Expected end control packet\n");
+        fclose(file);
+        return -1;
+    }
+
+    printf("File transfer complete.\n");
+    fclose(file);
+    return 0;
+}   

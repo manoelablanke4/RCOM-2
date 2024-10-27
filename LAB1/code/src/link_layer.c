@@ -17,6 +17,8 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 int send_times = 0;
 unsigned char ACTUAL;
+unsigned char T_STATE;
+unsigned char R_STATE;
 volatile int STOP = FALSE;
 LinkLayer ll;
 
@@ -28,7 +30,8 @@ unsigned char control = 0x00;
 #define FLAG_RCV 1 
 #define A_RCV 2 
 #define C_RCV 3 
-#define BCC_OK 4 
+#define BCC1_OK 4
+#define BCC2_OK 5
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -55,7 +58,7 @@ int llopen(LinkLayer connectionParameters)
     unsigned char buf2[BUF_SIZE] = {0};
     unsigned char A, C, F;
     A = 0x03; C= 0x03; F= 0x7E;
-    unsigned char ACTUAL;
+
     (void)signal(SIGALRM, alarmHandler);
 
     switch (connectionParameters.role)
@@ -71,49 +74,50 @@ int llopen(LinkLayer connectionParameters)
 
         writeBytesSerialPort(buf, BUF_SIZE);
         send_times++;
-        alarm(3);
-        sleep(1);
+        alarm(ll.timeout);
         ACTUAL = START;
 
-        while (STOP == FALSE && alarmCount < 3)
+        while (STOP == FALSE && alarmCount < ll.nRetransmissions)
         {
             // Retorna após 5 caracteres terem sido recebidos
 
-            readByteSerialPort(buf);
-            switch (ACTUAL){
-            case START:
-                printf("i recieved this %u and im at START\n", buf[0]);
-                if(buf[0] == F) ACTUAL = FLAG_RCV;
-                
-                break;
-            case FLAG_RCV:
-                printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
-                if(buf[0] == F) ACTUAL = FLAG_RCV;
-                else if(buf[0] == A) ACTUAL = A_RCV;
-                else ACTUAL = START;
-                
-                break;
-            case A_RCV:
-                printf("i recieved this %u and im at A_RCV\n", buf[0]);
-                if(buf[0] == F) ACTUAL = FLAG_RCV;
-                else if(buf[0] == 0x07) ACTUAL = C_RCV;
-                else ACTUAL = START;
-                
-                break;
-            case C_RCV:
-            printf("i recieved this %u and im at C_RCV\n", buf[0]);
-                if(buf[0] == F) ACTUAL = FLAG_RCV;
-                else if(buf[0] != 0x00) ACTUAL = BCC_OK;
-                else ACTUAL = START;
-            
-                break;
-            case BCC_OK:
-            printf("i recieved this %u and im at BCC_OK\n", buf[0]);
-                if(buf[0] == F) STOP=TRUE;
-                else ACTUAL = START;
-                break;
-            default:
-                break;
+            if(readByteSerialPort(buf) > 0)
+            {
+                switch (ACTUAL){
+                case START:
+                    printf("i recieved this %u and im at START\n", buf[0]);
+                    if(buf[0] == F) ACTUAL = FLAG_RCV;
+
+                    break;
+                case FLAG_RCV:
+                    printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
+                    if(buf[0] == F) ACTUAL = FLAG_RCV;
+                    else if(buf[0] == A) ACTUAL = A_RCV;
+                    else ACTUAL = START;
+
+                    break;
+                case A_RCV:
+                    printf("i recieved this %u and im at A_RCV\n", buf[0]);
+                    if(buf[0] == F) ACTUAL = FLAG_RCV;
+                    else if(buf[0] == 0x07) ACTUAL = C_RCV;
+                    else ACTUAL = START;
+
+                    break;
+                case C_RCV:
+                printf("i recieved this %u and im at C_RCV\n", buf[0]);
+                    if(buf[0] == F) ACTUAL = FLAG_RCV;
+                    else if(buf[0] != 0x00) ACTUAL = BCC1_OK;
+                    else ACTUAL = START;
+
+                    break;
+                case BCC1_OK:
+                printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
+                    if(buf[0] == F) STOP=TRUE;
+                    else ACTUAL = START;
+                    break;
+                default:
+                    break;
+                    }
             }
             if(STOP==TRUE) {
                 alarm(0);
@@ -127,7 +131,7 @@ int llopen(LinkLayer connectionParameters)
                 buf[4] = F;
                 writeBytesSerialPort(buf, BUF_SIZE);
                 send_times++;
-                alarm(3);
+                alarm(ll.timeout);
             }
         }   
         if(STOP == FALSE ) return -1;
@@ -138,8 +142,9 @@ int llopen(LinkLayer connectionParameters)
         while (STOP == FALSE)
     {
         // Retorna após 1 caracteres terem sido recebidos
-        readByteSerialPort(buf);
-        switch (ACTUAL){
+        if(readByteSerialPort(buf) > 0)
+        {
+            switch (ACTUAL){
             case START:
                 printf("i recieved this %u and im at START\n", buf[0]);
                 if(buf[0] == F) ACTUAL = FLAG_RCV;
@@ -162,18 +167,19 @@ int llopen(LinkLayer connectionParameters)
             case C_RCV:
             printf("i recieved this %u and im at C_RCV\n", buf[0]);
                 if(buf[0] == F) ACTUAL = FLAG_RCV;
-                else if(buf[0] == 0x00) ACTUAL = BCC_OK;
+                else if(buf[0] == 0x00) ACTUAL = BCC1_OK;
                 else ACTUAL = START;
             
                 break;
-            case BCC_OK:
-            printf("i recieved this %u and im at BCC_OK\n", buf[0]);
+            case BCC1_OK:
+            printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
                 if(buf[0] == F) STOP=TRUE;
                 else ACTUAL = START;
                 break;
             default:
                 break;
             }
+        }
             if(STOP==TRUE){
                 buf[0] = F;
                 buf[1] = A;
@@ -183,7 +189,6 @@ int llopen(LinkLayer connectionParameters)
                 buf[4] = F;
 
                 writeBytesSerialPort(buf, BUF_SIZE);
-                sleep(1);
                 printf("Congrats!\n");
             }
     }   
@@ -201,13 +206,14 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 { 
+    unsigned char bcc2 = calculateBCC2(buf, bufSize);
     alarmCount = 0; send_times = 0;
     unsigned char stuffedFrame[256];
     size_t stuffedLength;
-    unsigned char wanted = 0xAB;
+    unsigned char response[256];
 
     byteStuffing(buf, bufSize, stuffedFrame, &stuffedLength);
-
+    
     unsigned char transformedFrame[256];
 
     transformedFrame[0] = FLAG;
@@ -219,8 +225,8 @@ int llwrite(const unsigned char *buf, int bufSize)
         transformedFrame[i+4] = stuffedFrame[i];
     }
 
-    transformedFrame[stuffedLength+4] = FLAG;
-    transformedFrame[stuffedLength+5] = calculateBCC2(stuffedFrame, stuffedLength);
+    transformedFrame[stuffedLength+4] = bcc2;
+    transformedFrame[stuffedLength+5] = FLAG;
 
     size_t transformedLength = stuffedLength + 6;
 
@@ -229,62 +235,62 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     send_times++;
     alarm(ll.timeout);
-    ACTUAL=START;
+    T_STATE=START;
 
     unsigned char C;
 
     while(STOP == FALSE && alarmCount < ll.nRetransmissions){   
-        readByteSerialPort(buf);
-        switch (ACTUAL){
+        readByteSerialPort(response);
+        switch (T_STATE){
         case START:
-            printf("i recieved this %u and im at START\n", buf[0]);
-            if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
+            printf("i recieved this %u and im at START\n", response[0]);
+            if(response[0] == FLAG) T_STATE = FLAG_RCV;
             break;
         case FLAG_RCV:
-            printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
-            if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-            else if(buf[0] == 0X03) ACTUAL = A_RCV;
-            else ACTUAL = START;
+            printf("i recieved this %u im at FLAG_RCV\n", response[0]);
+            if(response[0] == FLAG) T_STATE = FLAG_RCV;
+            else if(response[0] == 0X03) T_STATE = A_RCV;
+            else T_STATE = START;
             break;
         case A_RCV:
-            printf("i recieved this %u and im at A_RCV\n", buf[0]);
-            if(buf[0] == 0XAA){ 
+            printf("i recieved this %u and im at A_RCV\n", response[0]);
+            if(response[0] == 0XAA){ 
                 C = 0xAA;
-                ACTUAL = C_RCV;
+                T_STATE = C_RCV;
                 control = 0x00;
                 }
-            else if(buf[0] == 0xAB){
+            else if(response[0] == 0xAB){
                 C = 0xAB;
-                ACTUAL = C_RCV;
+                T_STATE = C_RCV;
                 control = 0x80;
             }
-            else if(buf[0] == 0x54){
+            else if(response[0] == 0x54){
                 printf("Received REJ\n");
                 send_times= 0;
                 writeBytesSerialPort(transformedFrame, transformedLength);
                 send_times++;
-                ACTUAL = START;
+                T_STATE = START;
             }
-            else if (buf[0]== 0x55){
+            else if (response[0]== 0x55){
                 printf("Received RJ\n");
                 send_times= 0;
                 writeBytesSerialPort(transformedFrame, transformedLength);
                 send_times++;
-                ACTUAL = START;
+                T_STATE = START;
             }
-            else ACTUAL = START;
+            else T_STATE = START;
             break;
         case C_RCV:
-        printf("i recieved this %u and im at C_RCV\n", buf[0]);
-            if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-            else if(buf[0] == calculateBCC1(0x03,C)) ACTUAL = BCC_OK;
-            else ACTUAL = START;
+        printf("i recieved this %u and im at C_RCV\n", response[0]);
+            if(response[0] == FLAG) T_STATE = FLAG_RCV;
+            else if(response[0] == calculateBCC1(0x03,C)) T_STATE = BCC1_OK;
+            else T_STATE = START;
             break;         
 
-        case BCC_OK:
-        printf("i recieved this %u and im at BCC_OK\n", buf[0]);
-            if(buf[0] == FLAG) STOP=TRUE;
-            else ACTUAL = START;
+        case BCC1_OK:
+        printf("i recieved this %u and im at BCC1_OK\n", response[0]);
+            if(response[0] == FLAG) STOP=TRUE;
+            else T_STATE = START;
             break;
         default:
             break;
@@ -296,10 +302,10 @@ int llwrite(const unsigned char *buf, int bufSize)
             printf("Resending message\n");
             writeBytesSerialPort(transformedFrame, transformedLength); //We already have the frame? Just ship it
             send_times++;
-            alarm(3);
+            alarm(ll.timeout);
         }
     }
-    return stuffedLength;
+    return transformedLength;
 }
 
 ////////////////////////////////////////////////
@@ -307,9 +313,63 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO
+    unsigned char buf[256];
+    unsigned char frame[256];
+    unsigned int pos;
+    unsigned char num_frame;
+    size_t frameLength;
+    unsigned char destuffedFrame[256];
+    R_STATE = START;
 
-    return 0;
+    while (STOP == FALSE)
+    {
+        // Retorna após 1 caracteres terem sido recebidos
+        if(readByteSerialPort(buf) != 0)
+        {
+            frameLength++;
+            switch (R_STATE){
+            case START:
+                printf("i recieved this %u and im at START\n", buf[0]);
+                if(buf[0] == FLAG) {R_STATE = FLAG_RCV; frame[pos++] = buf[0];}
+                break;
+            case FLAG_RCV:
+                printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
+                if(buf[0] == FLAG) R_STATE = FLAG_RCV;
+                else if(buf[0] == 0x03) {R_STATE = A_RCV; frame[pos++] = buf[0];}
+                else R_STATE = START;
+                break;
+            case A_RCV:
+                printf("i recieved this %u and im at A_RCV\n", buf[0]);
+                if(buf[0] == FLAG) R_STATE = FLAG_RCV;
+                else if(buf[0] == 0x00) {R_STATE = C_RCV; frame[pos++] = buf[0]; num_frame = 0;} 
+                else if(buf[0] == 0x80) {R_STATE = C_RCV; frame[pos++] = buf[0]; num_frame = 1;}
+                else R_STATE = START;
+                break;
+            case C_RCV:
+                printf("i recieved this %u and im at C_RCV\n", buf[0]);
+                if(buf[0] == FLAG) R_STATE = FLAG_RCV;
+                else if(buf[0] == calculateBCC1(frame[pos-1], frame[pos-2])) R_STATE = BCC1_OK;
+                else {R_STATE = START; printf("BCC1 error\n");}
+                break;
+            case BCC1_OK:
+            printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
+                if(buf[0] == FLAG) STOP=TRUE;
+                else R_STATE = START;
+                break;
+            default:
+                break;
+            }
+        }
+            if(STOP==TRUE){
+
+                // Look if there is something to put before
+                writeBytesSerialPort(frame, frameLength);
+                printf("Receiver sending response");
+            }
+    } 
+    
+
+    return frameLength;
 }
 
 ////////////////////////////////////////////////

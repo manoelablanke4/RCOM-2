@@ -459,6 +459,8 @@ int llclose(int showStatistics)
     bool terminate = false;
     unsigned char A, C;
     send_times = 0;
+    STOP=FALSE;
+    ACTUAL=START;
 
     switch (ll.role)
     {
@@ -472,6 +474,7 @@ int llclose(int showStatistics)
         supervision[3] = calculateBCC1(supervision[1], supervision[2]);
         supervision[4] = FLAG;
         writeBytesSerialPort(supervision, BUF_SIZE);
+        printf("Tx sending DISC\n");
         send_times++;
         alarm(ll.timeout);
         ACTUAL = START;
@@ -515,8 +518,9 @@ int llclose(int showStatistics)
                     }
             }
             if(STOP==TRUE) {
+                disc_ok = true;
                 unsigned char ua[MAX_PAYLOAD_SIZE+24];
-                A = 0x03; C= 0x03;
+                A = 0x03; C= 0x07;
                 ua[0] = FLAG;
                 ua[1] = A;
                 ua[2] = C;
@@ -524,9 +528,9 @@ int llclose(int showStatistics)
                 ua[4] = FLAG;
                 writeBytesSerialPort(ua, BUF_SIZE);
                 alarm(0);
-                printf("Connection terminated succesfully\n");
+                printf("Tx sending UA\n");
             } else if(alarmCount > 0 && alarmCount == send_times){
-                printf("Resending message\n");
+                printf("Resending disc message\n");
                 writeBytesSerialPort(supervision, BUF_SIZE);
                 send_times++;
                 alarm(ll.timeout);
@@ -536,7 +540,6 @@ int llclose(int showStatistics)
         break;
     case LlRx:
         ACTUAL = START;
-        
         while (STOP == FALSE)
     {
         // Retorna após 1 caracteres terem sido recebidos
@@ -545,27 +548,27 @@ int llclose(int showStatistics)
             switch (ACTUAL){
             case START:
                 printf("i recieved this %u and im at START\n", buf[0]);
-                if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-                
+                if(buf[0] == FLAG) ACTUAL = FLAG_RCV;             
                 break;
             case FLAG_RCV:
                 printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
                 if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-                else if(buf[0] == A) ACTUAL = A_RCV;
+                else if(buf[0] == 0x03) {ACTUAL = A_RCV; A = buf[0];}
                 else ACTUAL = START;
                 
                 break;
             case A_RCV:
                 printf("i recieved this %u and im at A_RCV\n", buf[0]);
                 if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-                else if(buf[0] == C) ACTUAL = C_RCV;
+                else if(buf[0] == 0x0B) {ACTUAL = C_RCV; C = buf[0];}
+                else if(disc_ok && buf[0] == 0x07) {ACTUAL = C_RCV; C = buf[0];}
                 else ACTUAL = START;
                 
                 break;
             case C_RCV:
             printf("i recieved this %u and im at C_RCV\n", buf[0]);
                 if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-                else if(buf[0] == 0x00) ACTUAL = BCC1_OK;
+                else if(buf[0] == calculateBCC1(A,C)) ACTUAL = BCC1_OK;
                 else ACTUAL = START;
             
                 break;
@@ -578,15 +581,21 @@ int llclose(int showStatistics)
                 break;
             }
         }
-            if(STOP==TRUE){
-                buf[0] = FLAG;
-                buf[1] = A;
-                C = 0x07;
-                buf[2] = C;
-                buf[3] = A^C;
-                buf[4] = FLAG;
-                writeBytesSerialPort(buf, BUF_SIZE);
-                printf("Congrats!\n");
+            if(STOP==TRUE && !disc_ok){
+                disc_ok = true;
+                ACTUAL=START;
+                STOP=FALSE;
+                unsigned char disc[BUF_SIZE];
+                disc[0] = FLAG;
+                disc[1] = 0x03;
+                disc[2] = 0x0B;
+                disc[3] = calculateBCC1(disc[1], disc[2]);
+                disc[4] = FLAG;
+                writeBytesSerialPort(disc, BUF_SIZE);
+                printf("Receiver send Disc!\n");
+            }
+            else if(STOP==TRUE && disc_ok){
+                printf("Rx terminated susccesfully\n");
             }
     }
         break;

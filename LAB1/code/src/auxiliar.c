@@ -93,7 +93,6 @@ int createControlPacket(unsigned char controlByte, unsigned char *packet, int fi
     for(int i = 0; i < strlen(filename); i++){
         packet[index++] = filename[i];
     }
-    packet[index++] = 0;
     return index;
 }
 
@@ -131,7 +130,7 @@ int SendFile(const char *filename) {
     }
 
     int fileSize = getFileSize(file);
-    unsigned char controlPacket[MAX_PAYLOAD_SIZE];
+    unsigned char controlPacket[MAX_PAYLOAD_SIZE+24];
     int controlPacketSize = createControlPacket(CONTROL_START, controlPacket, fileSize, filename);
 
     if (controlPacketSize < 0) {
@@ -149,13 +148,14 @@ int SendFile(const char *filename) {
     printf("Control packet sent to start\n");
 
     unsigned char dataPacket[MAX_PAYLOAD_SIZE];
+    unsigned char rawPacket[MAX_PAYLOAD_SIZE+4];
     int bytesRead;
     int sequenceNumber = 0;
 
     while ((bytesRead = fread(dataPacket, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
         printf("bytes read: %d\n", bytesRead);
         printf("Sending data packet %d\n", sequenceNumber);
-        int packetSize = createDataPacket(dataPacket, sequenceNumber, dataPacket + 4, bytesRead);
+        int packetSize = createDataPacket(rawPacket, sequenceNumber, dataPacket, bytesRead);
         sequenceNumber = (sequenceNumber + 1) % 100;
 
         if (packetSize < 0) {
@@ -164,13 +164,12 @@ int SendFile(const char *filename) {
             return -1;
         }
 
-        if (llwrite(dataPacket, packetSize) < 0) {
+        if (llwrite(rawPacket, packetSize) < 0) {
             printf("Error sending data packet\n");
             fclose(file);
             return -1;
         }
     }
-
     // Send end control packet
     controlPacketSize = createControlPacket(CONTROL_END, controlPacket, fileSize, filename);
     if (controlPacketSize < 0) {
@@ -213,7 +212,7 @@ int SendFile(const char *filename) {
 
     int fileSize = (controlPacket[3] << 24) | (controlPacket[4] << 16) | (controlPacket[5] << 8) | controlPacket[6];
     int filenameLength = controlPacket[8];
-    char receivedFilename[256];
+    char receivedFilename[MAX_PAYLOAD_SIZE+24];
     strncpy(receivedFilename, (char *)controlPacket + 9, filenameLength);
     receivedFilename[filenameLength] = '\0';
 
@@ -241,14 +240,13 @@ int SendFile(const char *filename) {
             return -1;
         }
         int dataSize = (dataPacket[2] << 8) | dataPacket[3];
-        fwrite(dataPacket + 4, 1, dataSize, file);
+        if(dataPacket[0] == CONTROL_DATA) fwrite(dataPacket + 4, sizeof(unsigned char), dataSize, file);
         printf("The data size is %u\n", dataSize);
-        if (dataSize < MAX_PAYLOAD_SIZE - 4) {
+        if (dataSize < MAX_PAYLOAD_SIZE) {
             break;
         }
         sequenceNumber = (sequenceNumber + 1) % 100;
     }
-
     bytesRead = llread(controlPacket);
     if (bytesRead < 0) {
         printf("Error receiving end control packet\n");

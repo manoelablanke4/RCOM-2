@@ -99,7 +99,7 @@ int createControlPacket(unsigned char controlByte, unsigned char *packet, int fi
 
 int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *data, int dataSize){
     int index = 0;
-    packet[index++] = CONTROL_START;
+    packet[index++] = CONTROL_DATA;
     packet[index++] = (unsigned char )sequenceNumber;
 
     unsigned char L1 = dataSize & 0xFF; 
@@ -215,11 +215,11 @@ int SendFile(const char *filename) {
     strncpy(receivedFilename, (char *)controlPacket + 9, filenameLength);
     receivedFilename[filenameLength] = '\0';
 
-    if (strcmp(filename, receivedFilename) != 0) {
-        printf("Filename mismatch\n");
-        fclose(file);
-        return -1;
-    }
+    // if (strcmp(filename, receivedFilename) != 0) {
+    //     printf("Filename mismatch\n");
+    //     fclose(file);
+    //     return -1;
+    // }
 
     unsigned char dataPacket[MAX_PAYLOAD_SIZE];
     int sequenceNumber = 0;

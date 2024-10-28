@@ -17,10 +17,10 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 int send_times = 0;
 int sequenceNumber = 0;
-int packets_to_read = MAX_PAYLOAD_SIZE;
 unsigned char ACTUAL;
 unsigned char T_STATE;
 unsigned char R_STATE;
+unsigned int bytes_read = 0;
 volatile int STOP = FALSE;
 LinkLayer ll;
 
@@ -208,15 +208,16 @@ int llopen(LinkLayer connectionParameters)
 int llwrite(const unsigned char *buf, int bufSize)
 {
     STOP = FALSE;
+    T_STATE=START;
     unsigned char bcc2 = calculateBCC2(buf, bufSize);
     alarmCount = 0; send_times = 0;
-    unsigned char stuffedFrame[MAX_PAYLOAD_SIZE];
+    unsigned char stuffedFrame[MAX_PAYLOAD_SIZE+24];
     size_t stuffedLength;
-    unsigned char response[MAX_PAYLOAD_SIZE];
+    unsigned char response[MAX_PAYLOAD_SIZE+24];
 
     byteStuffing(buf, bufSize, stuffedFrame, &stuffedLength);
 
-    unsigned char transformedFrame[MAX_PAYLOAD_SIZE];
+    unsigned char transformedFrame[MAX_PAYLOAD_SIZE+24];
 
     transformedFrame[0] = FLAG;
     transformedFrame[1] = 0x03;
@@ -236,7 +237,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     else { printf ("Error writing to serial port\n"); };
 
     alarm(ll.timeout);
-    T_STATE=START;
 
     unsigned char A, C;
 
@@ -321,15 +321,15 @@ int llread(unsigned char *packet)
     STOP = FALSE;
     R_STATE = START;
     bool is_data = false;
-    unsigned char buf[MAX_PAYLOAD_SIZE];
-    unsigned char data[MAX_PAYLOAD_SIZE];
+    unsigned char buf[MAX_PAYLOAD_SIZE+24];
+    unsigned char data[MAX_PAYLOAD_SIZE+24];
     unsigned char A=0, C=0;
     unsigned char L1, L2;
     unsigned char BCC2;
     unsigned int pos=0;
     unsigned char num_frame;
     size_t frameLength=0;
-    unsigned char data_destuffed[MAX_PAYLOAD_SIZE];
+    unsigned char data_destuffed[MAX_PAYLOAD_SIZE+24];
     size_t data_destuffed_length;
     R_STATE = START;
     bool error = false;
@@ -404,7 +404,7 @@ int llread(unsigned char *packet)
             }
         }
             if(STOP==TRUE){
-                unsigned char frame[MAX_PAYLOAD_SIZE];
+                unsigned char frame[MAX_PAYLOAD_SIZE+24];
                 frame[0] = FLAG;
                 frame[1] = 0x03;
                 switch (num_frame)
@@ -430,7 +430,9 @@ int llread(unsigned char *packet)
         for(int i=0; i < data_destuffed_length; i++){
             packet[i] = data_destuffed[i];
         }
-        printf("Bytes read: %zu\n", frameLength);
+        printf("Bytes read for control: %zu\n", frameLength);
+        bytes_read += data_destuffed_length;
+        printf("Total bytes read: %u\n", bytes_read);
         return frameLength;
     }
     else if(data_destuffed[1] == sequenceNumber && data_destuffed[0] == 0x02)
@@ -439,10 +441,12 @@ int llread(unsigned char *packet)
             packet[i] = data_destuffed[i];
         }
         sequenceNumber++;
-        printf("Bytes read: %zu\n", frameLength);
+        bytes_read += data_destuffed_length;
+        printf("Total bytes read: %u\n", bytes_read);
+        printf("Bytes read for data: %zu\n", frameLength);
         return frameLength;
     }
-    printf("Bytes read: %zu\n", frameLength);
+    printf("Bytes read and error: %zu\n", frameLength);
     return -1;
 }
 
@@ -460,8 +464,8 @@ int llclose(int showStatistics)
     {
     case LlTx:
         
-        unsigned char supervision[MAX_PAYLOAD_SIZE];
-        unsigned char buf[MAX_PAYLOAD_SIZE];
+        unsigned char supervision[MAX_PAYLOAD_SIZE+24];
+        unsigned char buf[MAX_PAYLOAD_SIZE+24];
         supervision[0] = FLAG;
         supervision[1] = 0x03;
         supervision[2] = 0x0B;
@@ -511,7 +515,7 @@ int llclose(int showStatistics)
                     }
             }
             if(STOP==TRUE) {
-                unsigned char ua[MAX_PAYLOAD_SIZE];
+                unsigned char ua[MAX_PAYLOAD_SIZE+24];
                 A = 0x03; C= 0x03;
                 ua[0] = FLAG;
                 ua[1] = A;
@@ -527,7 +531,7 @@ int llclose(int showStatistics)
                 send_times++;
                 alarm(ll.timeout);
             }
-        }   
+        }
         if(STOP == FALSE ) return -1;
         break;
     case LlRx:

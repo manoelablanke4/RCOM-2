@@ -152,7 +152,9 @@ int SendFile(const char *filename) {
     int bytesRead;
     int sequenceNumber = 0;
 
-    while ((bytesRead = fread(dataPacket, 1, MAX_PAYLOAD_SIZE - 4, file)) > 0) {
+    while ((bytesRead = fread(dataPacket, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
+        printf("bytes read: %d\n", bytesRead);
+        printf("Sending data packet %d\n", sequenceNumber);
         int packetSize = createDataPacket(dataPacket, sequenceNumber, dataPacket + 4, bytesRead);
         sequenceNumber = (sequenceNumber + 1) % 100;
 
@@ -183,7 +185,7 @@ int SendFile(const char *filename) {
         return -1;
     }
 
-    printf("File transfer complete.\n");
+    printf("File transfer complete (send).\n");
     fclose(file);
     return 0;
 }
@@ -195,7 +197,7 @@ int SendFile(const char *filename) {
         return -1;
     }
 
-    unsigned char controlPacket[MAX_PAYLOAD_SIZE];
+    unsigned char controlPacket[MAX_PAYLOAD_SIZE+24];
     int bytesRead = llread(controlPacket);
     if (bytesRead < 0) {
         printf("Error receiving control packet\n");
@@ -221,7 +223,7 @@ int SendFile(const char *filename) {
     //     return -1;
     // }
 
-    unsigned char dataPacket[MAX_PAYLOAD_SIZE];
+    unsigned char dataPacket[MAX_PAYLOAD_SIZE+24];
     int sequenceNumber = 0;
     
 
@@ -232,20 +234,18 @@ int SendFile(const char *filename) {
             fclose(file);
             return -1;
         }
-
+        printf("The header is %u\n", dataPacket[0]);
         if (dataPacket[1] != sequenceNumber) {
             printf("Expected sequence number %d, received %d\n", sequenceNumber, dataPacket[1]);
             fclose(file);
             return -1;
         }
-
-        int dataSize = (dataPacket[3] << 8) | dataPacket[2];
+        int dataSize = (dataPacket[2] << 8) | dataPacket[3];
         fwrite(dataPacket + 4, 1, dataSize, file);
-
+        printf("The data size is %u\n", dataSize);
         if (dataSize < MAX_PAYLOAD_SIZE - 4) {
             break;
         }
-
         sequenceNumber = (sequenceNumber + 1) % 100;
     }
 

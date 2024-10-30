@@ -209,6 +209,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 {
     STOP = FALSE;
     T_STATE=START;
+    R_STATE=START;
     unsigned char bcc2 = calculateBCC2(buf, bufSize);
     alarmCount = 0; send_times = 0;
     unsigned char stuffedFrame[MAX_PAYLOAD_SIZE+24];
@@ -240,12 +241,13 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     unsigned char A, C;
 
-    while(STOP == FALSE && alarmCount < ll.nRetransmissions){   
+    while(STOP == FALSE && alarmCount <= ll.nRetransmissions){   
         if(readByteSerialPort(response) >  0)
         {
         switch (T_STATE){
         case START:
             printf("i recieved this %u and im at START\n", response[0]);
+            if(response[0] != FLAG);
             if(response[0] == FLAG) T_STATE = FLAG_RCV;
             break;
         case FLAG_RCV:
@@ -269,16 +271,20 @@ int llwrite(const unsigned char *buf, int bufSize)
             else if(response[0] == 0x54){
                 printf("Received REJ\n");
                 send_times= 0;
-                writeBytesSerialPort(transformedFrame, transformedLength);
-                send_times++;
+                // alarm(0);
+                // writeBytesSerialPort(transformedFrame, transformedLength);
+                // send_times++;
                 T_STATE = START;
+                return -1;
             }
             else if (response[0]== 0x55){
-                printf("Received RJ\n");
+                printf("Received REJ\n");
+                // alarm(0);
                 send_times= 0;
-                writeBytesSerialPort(transformedFrame, transformedLength);
-                send_times++;
+                // writeBytesSerialPort(transformedFrame, transformedLength);
+                // send_times++;
                 T_STATE = START;
+                return -1;
             }
             else T_STATE = START;
             break;
@@ -303,9 +309,14 @@ int llwrite(const unsigned char *buf, int bufSize)
             printf("Received message is correct\n");
         } else if(alarmCount > 0 && alarmCount == send_times){
             printf("Resending message\n");
-            writeBytesSerialPort(transformedFrame, transformedLength); //We already have the frame? Just ship it
             send_times++;
             alarm(ll.timeout);
+           
+            // unsigned char flagtest[1];
+            // flagtest[0] = FLAG;
+            // writeBytesSerialPort(flagtest, 1);
+
+            writeBytesSerialPort(transformedFrame, transformedLength); //We already have the frame? Just ship it
         }
     }
     if(STOP == FALSE) return -1;
@@ -366,35 +377,17 @@ int llread(unsigned char *packet)
                 break;
             case BCC1_OK:
                 printf("i recieved this %u and im at DATA_READING\n", buf[0]);
-                // printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
-                // if(pos == 0) {if(buf[0]==2) is_data=true;}
-                // else if(pos == 2) {
-                //     if(is_data) {data[pos++]=buf[0]; L2 = buf[0];}
-                //     else {data[pos++]=buf[0]; packets_to_read = buf[0] + 2;}
-                //     }
-                // else if(pos == 3 && is_data){
-                //     data[pos++]=buf[0]; L1 = buf[0];
-                //     packets_to_read = ((L2 << 8) | L1) + 4;
-                //     printf("packets to read: %zu", packets_to_read);
-                // }
-                // else if(pos < packets_to_read){ printf("Receiving Data"); data[pos++] = buf[0];}
-                
                 if(buf[0] != FLAG) {
                     data[pos++]=buf[0];
-                    
-                    // byteDestuffing(data, packets_to_read, data_destuffed, &data_destuffed_length);
-                    // if(buf[0] == calculateBCC2(data_destuffed, data_destuffed_length)) {
-                    //     R_STATE = BCC2_OK; 
-                    //     
-                    // }
-                    // else {R_STATE = BCC2_OK; error = true; }
                 }
                 else if(buf[0] == FLAG) {
                     byteDestuffing(data, pos - 1, data_destuffed, &data_destuffed_length);
                     if(data[pos-1] == calculateBCC2(data_destuffed, data_destuffed_length)) {
                         error = false;
                     }
-                    else {error = true; printf("BCC2 Error\n");}
+                    else {error = true; printf("BCC2 Error\n"); 
+                    return -1;}
+    
                     STOP = TRUE;
                 }
                 else {R_STATE = START; printf("Flag not received\n");}
@@ -411,11 +404,11 @@ int llread(unsigned char *packet)
                 {
                 case 0:
                     if(!error) frame[2] = 0xAB;
-                    else {frame[2] = 0x54; printf("BCC Error\n");}
+                    else {frame[2] = 0x54; printf("BCC Error\n");alarm(0);return -1;}
                     break;
                 case 1:
                     if(!error) frame[2] = 0xAA;
-                    else {frame[2] = 0x55; printf("BCC Error\n");}
+                    else {frame[2] = 0x55; printf("BCC Error\n");alarm(0);return -1;}
                     break;
                 default:
                     break;
@@ -461,13 +454,12 @@ int llclose(int showStatistics)
     send_times = 0;
     STOP=FALSE;
     ACTUAL=START;
-
+    unsigned char supervision[MAX_PAYLOAD_SIZE+24];
+    unsigned char buf[MAX_PAYLOAD_SIZE+24];
     switch (ll.role)
     {
     case LlTx:
         
-        unsigned char supervision[MAX_PAYLOAD_SIZE+24];
-        unsigned char buf[MAX_PAYLOAD_SIZE+24];
         supervision[0] = FLAG;
         supervision[1] = 0x03;
         supervision[2] = 0x0B;

@@ -216,6 +216,8 @@ int SendFile(const char *filename) {
     strncpy(receivedFilename, (char *)controlPacket + 9, filenameLength);
     receivedFilename[filenameLength] = '\0';
 
+    int maxTries = 3;
+    int tries = 0;
     // if (strcmp(filename, receivedFilename) != 0) {
     //     printf("Filename mismatch\n");
     //     fclose(file);
@@ -229,10 +231,16 @@ int SendFile(const char *filename) {
     while (1) {
         bytesRead = llread(dataPacket);
         if (bytesRead < 0) {
+            tries++;
             printf("Error receiving data packet\n");
-            fclose(file);
-            return -1;
+            continue;
+            // if(tries == maxTries){
+            //     printf("Max tries reached\n");
+            //     fclose(file);
+            //     return -1;
+            // }
         }
+        // tries = 0;
         printf("The header is %u\n", dataPacket[0]);
         if (dataPacket[1] != sequenceNumber) {
             printf("Expected sequence number %d, received %d\n", sequenceNumber, dataPacket[1]);

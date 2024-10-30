@@ -33,6 +33,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
      if(llopen(port) < 0){
        printf("Error opening connection\n");
+       return;
      }
      printf("\n---------------llopen done---------------\n\n");
       if(port_role == LlTx){

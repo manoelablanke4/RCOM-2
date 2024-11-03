@@ -8,6 +8,11 @@
 
 
 //STUFFING AND DESTUFFING
+// Function to stuff the bytes in the data field of the frame. In case the byte is FLAG or ESCAPE, it will be stuffed.
+//@param input: the data to be stuffed
+//@param inputLength: the length of the data to be stuffed
+//@param output: the stuffed data
+//@param outputLength: the length of the stuffed data
 void byteStuffing(const unsigned char *input, size_t inputLength, unsigned char *output, size_t *outputLength){
     size_t newLength = 0;
 
@@ -33,6 +38,13 @@ void byteStuffing(const unsigned char *input, size_t inputLength, unsigned char 
 
     *outputLength = newLength;
 }
+
+// Function to destuff the bytes in the data field of the frame. In case the byte is ESCAPE followed by 0x5E or 0x5D, it will be destuffed.
+//@param input: the data to be destuffed
+//@param inputLength: the length of the data to be destuffed
+//@param output: the destuffed data
+//@param outputLength: the length of the destuffed data
+
 
 void byteDestuffing(const unsigned char *input, size_t inputLength, unsigned char *output, size_t *outputLength){
     size_t newLength = 0;
@@ -64,10 +76,18 @@ void byteDestuffing(const unsigned char *input, size_t inputLength, unsigned cha
 
 
 //BCC CALCULATION
+// Function to calculate the first Block Check Character, which is the XOR of two bytes
+//@param a: the first byte to be XORed
+//@param b: the second byte to be XORed
+//@return the result of the XOR operation
 unsigned char calculateBCC1(unsigned char a, unsigned char b) {
     return a ^ b;
 }
 
+// Function to calculate the second Block Check Character, which is the XOR of all the bytes in the buffer
+//@param buf: the buffer to be XORed
+//@param bufSize: the size of the buffer
+//@return the result of the XOR operation
 unsigned char calculateBCC2(const unsigned char *buf, int bufSize){
     unsigned char bcc = 0x00;
     for(size_t i = 0; i < bufSize; i++){
@@ -77,8 +97,13 @@ unsigned char calculateBCC2(const unsigned char *buf, int bufSize){
 }
 
 
-//FILE FUNCTIONS
-
+//PACKET CREATION
+// Function to create a control packet
+//@param controlByte: the control byte of the packet which can be CONTROL_START(in case of the start control packet) or CONTROL_END(in case of the end control packet)
+//@param packet: the packet to be created
+//@param fileSize: the size of the file to be sent
+//@param filename: the name of the file to be sent
+//@return the size of the packet created
 int createControlPacket(unsigned char controlByte, unsigned char *packet, int fileSize, const char *filename){
     int index = 0;
     packet[index++] = controlByte;
@@ -96,6 +121,12 @@ int createControlPacket(unsigned char controlByte, unsigned char *packet, int fi
     return index;
 }
 
+// Function to create a data packet which contains control data byte, sequence number, data size(L1 and L2) and data
+//@param packet: the packet to be created
+//@param sequenceNumber: the sequence number of the packet (bewteen 0 and 99)
+//@param data: the data to be sent
+//@param dataSize: the size of the data to be sent
+//@return the size of the packet created
 int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *data, int dataSize){
     int index = 0;
     packet[index++] = CONTROL_DATA;
@@ -111,6 +142,11 @@ int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *d
     }
     return index;
 }
+
+//FILE FUNCTIONS
+// Function to get the size of a file 
+//@param fp: the file to get the size
+//@return the size of the file
    int getFileSize(FILE *fp){
 
     int lsize;
@@ -121,6 +157,10 @@ int createDataPacket(unsigned char *packet, int sequenceNumber, unsigned char *d
 
     return lsize;
 }
+
+// Function to send a file
+//@param filename: the name of the file to be sent
+//@return 0 if the file was sent successfully, -1 otherwise
 
 int SendFile(const char *filename) {
     FILE *file = fopen(filename, "r");
@@ -188,6 +228,10 @@ int SendFile(const char *filename) {
     fclose(file);
     return 0;
 }
+
+// Function to receive a file
+//@param filename: the name of the file to be received
+//@return 0 if the file was received successfully, -1 otherwise
 
  int ReceiveFile(const char *filename) {
     FILE *file = fopen(filename, "w");

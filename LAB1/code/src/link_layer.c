@@ -9,24 +9,26 @@
 #include <stdbool.h>
 
 
+
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
-#define BUF_SIZE 5
-#define SEND_TIMES 3
-int alarmEnabled = FALSE;
-int alarmCount = 0;
-int send_times = 0;
-int sequenceNumber = 0;
-unsigned char ACTUAL;
-unsigned char T_STATE;
-unsigned char R_STATE;
+#define BUF_SIZE 5 // Size of the buffer
+#define SEND_TIMES 3 // Number max of times the message is sent
+int alarmEnabled = FALSE; // Flag to check if the alarm is enabled
+int alarmCount = 0; // Number of alarms
+int send_times = 0; // Number of times the message is sent
+int sequenceNumber = 0; 
+unsigned char ACTUAL; // Actual state of the state machine
+unsigned char T_STATE; // State of the transmitter
+unsigned char R_STATE; // State of the receiver
 unsigned int bytes_read = 0;
-volatile int STOP = FALSE;
-LinkLayer ll;
-
-#define NS_0 0x00
-#define NS_1 0x80
-
+volatile int STOP = FALSE; // Flag to check if the program should stop
+LinkLayer ll; 
+int number_of_retransmissions = 0;
+int number_of_frames_read = 0;
+int number_of_frames_written = 0;
+#define NS_0 0x00 // Information frame 0
+#define NS_1 0x80 // Information frame 1
 unsigned char control = 0x00;
 #define START 0 
 #define FLAG_RCV 1 
@@ -45,6 +47,9 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
+// Function to open the serial port
+// @param connectionParameters: the parameters to open the serial port
+// @return the file descriptor of the serial port
 int llopen(LinkLayer connectionParameters)
 {
     int fd =openSerialPort(connectionParameters.serialPort,
@@ -63,54 +68,53 @@ int llopen(LinkLayer connectionParameters)
 
     (void)signal(SIGALRM, alarmHandler);
 
+    // Switch case to check the role of the connection
     switch (connectionParameters.role)
     {
+    // Transmitter
     case LlTx:
-        
+
         A = 0x03; C= 0x03;
+        // Create the message
         buf[0] = FLAG;
         buf[1] = A;
         buf[2] = C;
         buf[3] = A^C;
         buf[4] = FLAG;
 
-        writeBytesSerialPort(buf, BUF_SIZE);
-        send_times++;
-        alarm(ll.timeout);
-        ACTUAL = START;
+        writeBytesSerialPort(buf, BUF_SIZE); // Send the message
+        send_times++; // Increment the number of times the message was sent
+        alarm(ll.timeout); // Enable the alarm
+        ACTUAL = START; // Set the actual state to START
 
         while (STOP == FALSE && alarmCount < ll.nRetransmissions)
         {
-            // Retorna após 5 caracteres terem sido recebidos
-
+    
             if(readByteSerialPort(buf) > 0)
             {
                 switch (ACTUAL){
+                    //Stays in the START state until it receives a FLAG
                 case START:
                     printf("i recieved this %u and im at START\n", buf[0]);
                     if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
-
                     break;
                 case FLAG_RCV:
                     printf("i recieved this %u im at FLAG_RCV\n", buf[0]);
                     if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
                     else if(buf[0] == A) ACTUAL = A_RCV;
                     else ACTUAL = START;
-
                     break;
                 case A_RCV:
                     printf("i recieved this %u and im at A_RCV\n", buf[0]);
                     if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
                     else if(buf[0] == 0x07) ACTUAL = C_RCV;
                     else ACTUAL = START;
-
                     break;
                 case C_RCV:
                 printf("i recieved this %u and im at C_RCV\n", buf[0]);
                     if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
                     else if(buf[0] != 0x00) ACTUAL = BCC1_OK;
                     else ACTUAL = START;
-
                     break;
                 case BCC1_OK:
                 printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
@@ -124,7 +128,9 @@ int llopen(LinkLayer connectionParameters)
             if(STOP==TRUE) {
                 alarm(0);
                 printf("Received message is correct\n");
-            } else if(alarmCount > 0 && alarmCount == send_times){
+            }
+            // If the program didn't stop and the alarm is enabled, resend the message
+            else if(alarmCount > 0 && alarmCount == send_times){
                 printf("Resending message\n");
                 buf[0] = FLAG;
                 buf[1] = A;
@@ -136,17 +142,20 @@ int llopen(LinkLayer connectionParameters)
                 alarm(ll.timeout);
             }
         }   
+
+        // else, return -1
         if(STOP == FALSE ) return -1;
         break;
+    // Receiver
     case LlRx:
         ACTUAL = START;
         
         while (STOP == FALSE)
     {
-        // Retorna após 1 caracteres terem sido recebidos
         if(readByteSerialPort(buf) > 0)
         {
             switch (ACTUAL){
+                //Stays in the START state until it receives a FLAG
             case START:
                 printf("i recieved this %u and im at START\n", buf[0]);
                 if(buf[0] == FLAG) ACTUAL = FLAG_RCV;
@@ -175,7 +184,7 @@ int llopen(LinkLayer connectionParameters)
                 break;
             case BCC1_OK:
             printf("i recieved this %u and im at BCC1_OK\n", buf[0]);
-                if(buf[0] == FLAG) STOP=TRUE;
+                if(buf[0] == FLAG) STOP=TRUE; // If the message is correct, stop the program
                 else ACTUAL = START;
                 break;
             default:
@@ -205,11 +214,17 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
+
+// Function to write the bytes to the serial port
+// @param buf: the buffer to be written
+// @param bufSize: the size of the buffer
+// @return the number of bytes written
 int llwrite(const unsigned char *buf, int bufSize)
 {
     STOP = FALSE;
     T_STATE=START;
     R_STATE=START;
+
     unsigned char bcc2 = calculateBCC2(buf, bufSize);
     alarmCount = 0; send_times = 0;
     unsigned char stuffedFrame[MAX_PAYLOAD_SIZE+24];
@@ -271,18 +286,13 @@ int llwrite(const unsigned char *buf, int bufSize)
             else if(response[0] == 0x54){
                 printf("Received REJ\n");
                 send_times= 0;
-                // alarm(0);
-                // writeBytesSerialPort(transformedFrame, transformedLength);
-                // send_times++;
+             
                 T_STATE = START;
                 return -1;
             }
             else if (response[0]== 0x55){
                 printf("Received REJ\n");
-                // alarm(0);
                 send_times= 0;
-                // writeBytesSerialPort(transformedFrame, transformedLength);
-                // send_times++;
                 T_STATE = START;
                 return -1;
             }
@@ -307,11 +317,12 @@ int llwrite(const unsigned char *buf, int bufSize)
         if(STOP==TRUE) {
             alarm(0);
             printf("Received message is correct\n");
+            number_of_frames_written++;
         } else if(alarmCount > 0 && alarmCount == send_times){
             printf("Resending message\n");
             send_times++;
             alarm(ll.timeout);
-           
+            number_of_retransmissions++;
             // unsigned char flagtest[1];
             // flagtest[0] = FLAG;
             // writeBytesSerialPort(flagtest, 1);
@@ -327,6 +338,11 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
+
+// Function to read the bytes from the serial port
+// @param packet: the buffer to store the bytes read
+// @return the number of bytes read
+
 int llread(unsigned char *packet)
 {
     STOP = FALSE;
@@ -380,7 +396,8 @@ int llread(unsigned char *packet)
                 if(buf[0] != FLAG) {
                     data[pos++]=buf[0];
                 }
-                else if(buf[0] == FLAG) {
+                
+                else if(buf[0] == FLAG && send_times == 0) {
                     byteDestuffing(data, pos - 1, data_destuffed, &data_destuffed_length);
                     if(data[pos-1] == calculateBCC2(data_destuffed, data_destuffed_length)) {
                         error = false;
@@ -397,6 +414,7 @@ int llread(unsigned char *packet)
             }
         }
             if(STOP==TRUE){
+
                 unsigned char frame[MAX_PAYLOAD_SIZE+24];
                 frame[0] = FLAG;
                 frame[1] = 0x03;
@@ -413,8 +431,10 @@ int llread(unsigned char *packet)
                 default:
                     break;
                 }
+
                 frame[3] = calculateBCC1(frame[1], frame[2]);
                 frame[4] = FLAG;
+                number_of_frames_read++;
                 writeBytesSerialPort(frame, BUF_SIZE);
                 printf("Receiver sending response\n");
             }
@@ -446,6 +466,10 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
+
+// Function to close the serial port
+// @param showStatistics: flag to show the statistics
+// @return 1 if the serial port was closed successfully, -1 otherwise
 int llclose(int showStatistics)
 {
     bool disc_ok = false;
@@ -528,6 +552,11 @@ int llclose(int showStatistics)
                 alarm(ll.timeout);
             }
         }
+        printf("Number of frames written successfully: %d\n", number_of_frames_written);
+    printf("Number of retransmissions: %d\n", number_of_retransmissions);
+    int sum1 = number_of_frames_written + number_of_retransmissions;
+    int percentage1 = (number_of_retransmissions * 100) / sum1;
+    printf("Percentage of retransmissions: %d\n", percentage1);
         if(STOP == FALSE ) return -1;
         break;
     case LlRx:
@@ -588,13 +617,15 @@ int llclose(int showStatistics)
             }
             else if(STOP==TRUE && disc_ok){
                 printf("Rx terminated susccesfully\n");
+                printf("Number of frames read successfully: %d\n", number_of_frames_read);
+                printf("Total number of bytes read: %d\n", bytes_read);
             }
+
     }
         break;
     default:
         break;
     }
-
     int clstat = closeSerialPort();
     return clstat;
 }

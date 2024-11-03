@@ -254,13 +254,12 @@ int SendFile(const char *filename) {
         return -1;
     }
 
-    int fileSize = (controlPacket[3] << 24) | (controlPacket[4] << 16) | (controlPacket[5] << 8) | controlPacket[6];
+    //int fileSize = (controlPacket[3] << 24) | (controlPacket[4] << 16) | (controlPacket[5] << 8) | controlPacket[6];
     int filenameLength = controlPacket[8];
     char receivedFilename[MAX_PAYLOAD_SIZE+24];
     strncpy(receivedFilename, (char *)controlPacket + 9, filenameLength);
     receivedFilename[filenameLength] = '\0';
 
-    int maxTries = 3;
     int tries = 0;
     // if (strcmp(filename, receivedFilename) != 0) {
     //     printf("Filename mismatch\n");

@@ -254,7 +254,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     alarm(ll.timeout);
 
-    unsigned char A, C;
+    unsigned char C;
 
     while(STOP == FALSE && alarmCount <= ll.nRetransmissions){   
         if(readByteSerialPort(response) >  0)
@@ -347,12 +347,9 @@ int llread(unsigned char *packet)
 {
     STOP = FALSE;
     R_STATE = START;
-    bool is_data = false;
     unsigned char buf[MAX_PAYLOAD_SIZE+24];
     unsigned char data[MAX_PAYLOAD_SIZE+24];
     unsigned char A=0, C=0;
-    unsigned char L1, L2;
-    unsigned char BCC2;
     unsigned int pos=0;
     unsigned char num_frame;
     size_t frameLength=0;
@@ -389,7 +386,7 @@ int llread(unsigned char *packet)
                 printf("i recieved this %u and im at C_RCV\n", buf[0]);
                 if(buf[0] == FLAG) R_STATE = FLAG_RCV;
                 else if(buf[0] == calculateBCC1(A, C)) {R_STATE = BCC1_OK; }
-                else {R_STATE = START; printf("BCC1 error because is this value %zu\n", calculateBCC1(A,C));}
+                else {R_STATE = START; printf("BCC1 error because is this value %u\n", calculateBCC1(A,C));}
                 break;
             case BCC1_OK:
                 printf("i recieved this %u and im at DATA_READING\n", buf[0]);
@@ -473,7 +470,6 @@ int llread(unsigned char *packet)
 int llclose(int showStatistics)
 {
     bool disc_ok = false;
-    bool terminate = false;
     unsigned char A, C;
     send_times = 0;
     STOP=FALSE;
@@ -552,7 +548,7 @@ int llclose(int showStatistics)
                 alarm(ll.timeout);
             }
         }
-        printf("Number of frames written successfully: %d\n", number_of_frames_written);
+    printf("Number of frames written successfully: %d\n", number_of_frames_written);
     printf("Number of retransmissions: %d\n", number_of_retransmissions);
     int sum1 = number_of_frames_written + number_of_retransmissions;
     int percentage1 = (number_of_retransmissions * 100) / sum1;
